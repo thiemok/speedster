@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  build-and-publish:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 #v6.0.1
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          VERSION="${TAG_NAME#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Determine if this is the latest version
+        id: semver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CURRENT_VERSION="${{ steps.version.outputs.version }}"
+          
+          # Fetch all non-prerelease releases and extract version numbers
+          LATEST=$(gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.prerelease == false) | .tag_name | sub("^v"; "")] | sort_by(split(".") | map(tonumber)) | last')
+          
+          echo "Current version: $CURRENT_VERSION"
+          echo "Latest version: $LATEST"
+          
+          if [ "$CURRENT_VERSION" = "$LATEST" ]; then
+            echo "is_latest=true" >> $GITHUB_OUTPUT
+            echo "✓ This is the latest release"
+          else
+            echo "is_latest=false" >> $GITHUB_OUTPUT
+            echo "✗ Not the latest release (latest is $LATEST)"
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 #v3.7.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 #v3.11.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef #v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image metadata
+        id: docker_meta
+        run: |
+          TAGS="ghcr.io/${{ github.repository_owner }}/speedster:${{ steps.version.outputs.version }}"
+          if [ "${{ steps.semver.outputs.is_latest }}" = "true" ]; then
+            TAGS="$TAGS,ghcr.io/${{ github.repository_owner }}/speedster:latest"
+          fi
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 #v6.18.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 #v4.3.1
+        with:
+          version: 'latest'
+
+      - name: Update Helm chart version
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" helm/speedster/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.version }}\"/" helm/speedster/Chart.yaml
+          echo "Updated Chart.yaml:"
+          grep -E "^(version|appVersion):" helm/speedster/Chart.yaml
+
+      - name: Package Helm chart
+        run: |
+          helm package helm/speedster
+          echo "Packaged chart:"
+          ls -lh *.tgz
+
+      - name: Login to Helm OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push Helm chart to OCI registry
+        run: |
+          CHART_FILE="speedster-${{ steps.version.outputs.version }}.tgz"
+          
+          # Push versioned chart
+          helm push "$CHART_FILE" oci://ghcr.io/${{ github.repository_owner }}/charts
+          echo "✓ Pushed $CHART_FILE"
+          
+          # Push as latest if this is the latest version
+          if [ "${{ steps.semver.outputs.is_latest }}" = "true" ]; then
+            # Extract and repackage with 'latest' version for OCI
+            mkdir -p /tmp/helm-latest
+            tar -xzf "$CHART_FILE" -C /tmp/helm-latest
+            sed -i "s/^version:.*/version: latest/" /tmp/helm-latest/speedster/Chart.yaml
+            helm package /tmp/helm-latest/speedster -d /tmp
+            helm push /tmp/speedster-latest.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+            echo "✓ Pushed latest tag"
+          fi
+
+      - name: Upload Helm chart to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ steps.version.outputs.tag }} \
+            speedster-${{ steps.version.outputs.version }}.tgz \
+            --clobber
+
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Latest:** ${{ steps.semver.outputs.is_latest }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Images" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ github.repository_owner }}/speedster:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.semver.outputs.is_latest }}" = "true" ]; then
+            echo "- \`ghcr.io/${{ github.repository_owner }}/speedster:latest\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Helm Charts (OCI)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`oci://ghcr.io/${{ github.repository_owner }}/charts/speedster:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.semver.outputs.is_latest }}" = "true" ]; then
+            echo "- \`oci://ghcr.io/${{ github.repository_owner }}/charts/speedster:latest\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Installation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Docker" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ github.repository_owner }}/speedster:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Helm" >> $GITHUB_STEP_SUMMARY
+          echo "helm install speedster oci://ghcr.io/${{ github.repository_owner }}/charts/speedster --version ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
