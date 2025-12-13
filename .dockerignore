@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+dist/
+
+# Helm charts (not needed in container)
+helm/
+
+# Documentation
+README.md
+LICENSE
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Test files
+*_test.go
+testdata/
+
+# Misc
+*.md
+!go.mod
+!go.sum

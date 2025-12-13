@@ -1,0 +1,98 @@
+# Default values for speedster
+
+# Image configuration
+image:
+  repository: speedster
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Image pull secrets for private registries
+imagePullSecrets: []
+
+# CronJob configuration
+cronjob:
+  # Schedule in cron format (default: every hour)
+  schedule: "0 * * * *"
+  
+  # Number of successful finished jobs to retain
+  successfulJobsHistoryLimit: 3
+  
+  # Number of failed finished jobs to retain
+  failedJobsHistoryLimit: 1
+  
+  # Restart policy for the job
+  restartPolicy: OnFailure
+  
+  # Backoff limit for job retries
+  backoffLimit: 3
+  
+  # Active deadline in seconds (max runtime)
+  activeDeadlineSeconds: 300
+
+# OpenTelemetry configuration
+otel:
+  # OTLP endpoint (required)
+  endpoint: "http://otel-collector:4318"
+  
+  # Authentication headers (stored in secret)
+  # Format: key-value pairs
+  # Example: authorization: "Bearer token123"
+  headers: {}
+  
+  # Service name
+  serviceName: "speedster"
+  
+  # Service namespace (optional)
+  serviceNamespace: ""
+
+# Speedtest configuration
+speedtest:
+  # Specific server ID to test against (optional)
+  serverId: ""
+  
+  # Timeout in seconds
+  timeout: 30
+  
+  # Number of concurrent streams (0 = library default)
+  concurrentStreams: 0
+  
+  # Test duration in seconds (0 = library default)
+  testDuration: 0
+  
+  # Skip download test
+  skipDownload: false
+  
+  # Skip upload test
+  skipUpload: false
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Service account
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  
+  # The name of the service account to use
+  name: ""
+  
+  # Annotations to add to the service account
+  annotations: {}
+
+# Log level (debug, info, warn, error)
+logLevel: "info"

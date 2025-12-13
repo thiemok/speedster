@@ -1,0 +1,14 @@
+apiVersion: v2
+name: speedster
+description: A Helm chart for deploying Speedster internet speed monitoring
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - monitoring
+  - speedtest
+  - opentelemetry
+  - observability
+maintainers:
+  - name: speedster
+home: https://github.com/thiemok/speedster
