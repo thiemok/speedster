@@ -104,11 +104,7 @@ docker run --rm \
 ### Installing with Helm
 
 ```bash
-# Install latest version from GitHub Container Registry
-helm install speedster oci://ghcr.io/thiemok/charts/speedster \
-  --set otel.endpoint="http://otel-collector:4318"
-
-# Install specific version
+# Install from GitHub Container Registry
 helm install speedster oci://ghcr.io/thiemok/charts/speedster \
   --version 1.0.0 \
   --set otel.endpoint="http://otel-collector:4318"
@@ -125,8 +121,9 @@ helm install speedster oci://ghcr.io/thiemok/charts/speedster \
   --set otel.endpoint="http://otel-collector:4318" \
   --set-string otel.headers.authorization="Bearer YOUR_TOKEN"
 
-# Upgrade to latest version
-helm upgrade speedster oci://ghcr.io/thiemok/charts/speedster
+# Upgrade to a newer version
+helm upgrade speedster oci://ghcr.io/thiemok/charts/speedster \
+  --version 1.0.1
 
 # Uninstall
 helm uninstall speedster

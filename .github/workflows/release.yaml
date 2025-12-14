@@ -113,17 +113,6 @@ jobs:
           # Push versioned chart
           helm push "$CHART_FILE" oci://ghcr.io/${{ github.repository_owner }}/charts
           echo "✓ Pushed $CHART_FILE"
-          
-          # Push as latest if this is the latest version
-          if [ "${{ steps.semver.outputs.is_latest }}" = "true" ]; then
-            # Extract and repackage with 'latest' version for OCI
-            mkdir -p /tmp/helm-latest
-            tar -xzf "$CHART_FILE" -C /tmp/helm-latest
-            sed -i "s/^version:.*/version: latest/" /tmp/helm-latest/speedster/Chart.yaml
-            helm package /tmp/helm-latest/speedster -d /tmp
-            helm push /tmp/speedster-latest.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
-            echo "✓ Pushed latest tag"
-          fi
 
       - name: Upload Helm chart to release
         env:
@@ -148,9 +137,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Helm Charts (OCI)" >> $GITHUB_STEP_SUMMARY
           echo "- \`oci://ghcr.io/${{ github.repository_owner }}/charts/speedster:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.semver.outputs.is_latest }}" = "true" ]; then
-            echo "- \`oci://ghcr.io/${{ github.repository_owner }}/charts/speedster:latest\`" >> $GITHUB_STEP_SUMMARY
-          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Installation" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
