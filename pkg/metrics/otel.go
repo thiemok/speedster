@@ -70,18 +70,18 @@ func InitOTEL(ctx context.Context) (func(context.Context) error, error) {
 	}
 
 	latencyGauge, err = meter.Int64Gauge(
-		"speedtest_latency_ms",
-		metric.WithDescription("Latency in milliseconds"),
-		metric.WithUnit("ms"),
+		"speedtest_latency_ns",
+		metric.WithDescription("Latency in nanoseconds"),
+		metric.WithUnit("ns"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create latency gauge: %w", err)
 	}
 
 	jitterGauge, err = meter.Int64Gauge(
-		"speedtest_jitter_ms",
-		metric.WithDescription("Jitter in milliseconds"),
-		metric.WithUnit("ms"),
+		"speedtest_jitter_ns",
+		metric.WithDescription("Jitter in nanoseconds"),
+		metric.WithUnit("ns"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jitter gauge: %w", err)
