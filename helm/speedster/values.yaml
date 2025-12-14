@@ -39,6 +39,13 @@ otel:
   # Example: authorization: "Bearer token123"
   headers: {}
   
+  # Use an existing secret for OTEL headers (takes precedence over 'headers')
+  # If set, the chart will not create a secret
+  existingSecret:
+    name: ""
+    # Key within the secret containing OTEL headers
+    key: "OTEL_EXPORTER_OTLP_HEADERS"
+  
   # Service name
   serviceName: "speedster"
   

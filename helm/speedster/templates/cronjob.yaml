@@ -32,9 +32,18 @@ spec:
             envFrom:
             - configMapRef:
                 name: {{ include "speedster.fullname" . }}
-            {{- if .Values.otel.headers }}
-            - secretRef:
-                name: {{ include "speedster.fullname" . }}
+            {{- if or .Values.otel.headers .Values.otel.existingSecret.name }}
+            env:
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.otel.existingSecret.name }}
+                  name: {{ .Values.otel.existingSecret.name }}
+                  key: {{ .Values.otel.existingSecret.key }}
+                  {{- else }}
+                  name: {{ include "speedster.fullname" . }}
+                  key: OTEL_EXPORTER_OTLP_HEADERS
+                  {{- end }}
             {{- end }}
             resources:
               {{- toYaml .Values.resources | nindent 14 }}
