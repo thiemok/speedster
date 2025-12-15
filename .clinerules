@@ -1,0 +1,223 @@
+# Speedster Project Memory
+
+## Project Overview
+Speedster is a Kubernetes CronJob application that runs network speed tests and exports metrics to OpenTelemetry. It's written in Go and deployed via Helm charts.
+
+## Project Structure
+
+```
+speedster/
+├── cmd/
+│   └── speedster/
+│       └── main.go              # Application entry point
+├── pkg/
+│   ├── metrics/
+│   │   └── otel.go             # OpenTelemetry metrics and tracing setup
+│   └── speedtest/
+│       └── runner.go           # Speed test execution logic
+├── helm/
+│   └── speedster/
+│       ├── values.yaml         # Helm chart default values
+│       └── templates/
+│           ├── cronjob.yaml    # Kubernetes CronJob definition
+│           ├── configmap.yaml  # Environment variable configuration
+│           └── secret.yaml     # OTEL headers secret
+├── Dockerfile                   # Container image definition
+├── go.mod                      # Go module dependencies
+└── go.sum                      # Go module checksums
+```
+
+## Key Components
+
+### 1. cmd/speedster/main.go
+- **Purpose**: Application entry point
+- **Responsibilities**:
+  - Initialize OpenTelemetry
+  - Load configuration from environment variables
+  - Execute speed tests
+  - Log results and statistics
+  - Handle graceful shutdown
+- **Key Features**:
+  - Runs multiple measurements per execution
+  - Calculates statistics (avg, min, max) for multiple measurements
+  - Records individual results as metrics
+
+### 2. pkg/speedtest/runner.go
+- **Purpose**: Core speed test execution logic
+- **Key Types**:
+  - `MeasurementStrategy`: Enum for "single-server" or "multi-server" mode
+  - `Config`: Configuration structure loaded from environment variables
+  - `Result`: Speed test result with measurement index
+  - `ServerInfo`: Information about the test server
+  - `Runner`: Main executor for speed tests
+- **Key Functions**:
+  - `LoadConfig()`: Loads and validates configuration from environment
+  - `parseServerIDs()`: Parses comma-separated server IDs
+  - `validateServerIDs()`: Validates server ID count against strategy
+  - `selectServers()`: Selects servers based on strategy and sorts by latency
+  - `Run()`: Executes multiple measurements and returns results
+- **Important Logic**:
+  - In multi-server mode without specific IDs: sorts all servers by latency and selects N best
+  - Supports both single-server (reuse same server) and multi-server (different servers) strategies
+
+### 3. pkg/metrics/otel.go
+- **Purpose**: OpenTelemetry setup and metrics recording
+- **Responsibilities**:
+  - Initialize OTLP metric and trace exporters
+  - Create meter provider with periodic reader
+  - Define gauges for download, upload, latency, jitter
+  - Record speed test metrics with attributes
+- **Metrics Recorded**:
+  - `speedtest_download_mbps`: Download speed in Mbps
+  - `speedtest_upload_mbps`: Upload speed in Mbps
+  - `speedtest_latency_ns`: Latency in nanoseconds
+  - `speedtest_jitter_ns`: Jitter in nanoseconds
+- **Attributes**:
+  - `server_id`, `server_name`, `server_country`
+  - `measurement_index`: Index of measurement (1-N)
+
+### 4. helm/speedster/
+- **Purpose**: Kubernetes deployment via Helm
+- **Key Files**:
+  - `values.yaml`: Default configuration values
+  - `templates/cronjob.yaml`: CronJob definition
+  - `templates/configmap.yaml`: Environment variables
+  - `templates/secret.yaml`: OTEL authentication headers
+
+## Configuration Options
+
+### Environment Variables
+
+#### OpenTelemetry
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint URL (required)
+- `OTEL_EXPORTER_OTLP_HEADERS`: Authentication headers (optional, from secret)
+- `OTEL_SERVICE_NAME`: Service name (default: "speedster")
+- `OTEL_SERVICE_NAMESPACE`: Service namespace (optional)
+
+#### Speed Test
+- `SPEEDTEST_SERVER_ID`: Comma-separated server IDs (optional)
+  - Single server: "12345"
+  - Multiple servers: "12345,67890,11111"
+- `SPEEDTEST_MEASUREMENT_COUNT`: Number of measurements to run (default: 1)
+- `SPEEDTEST_MEASUREMENT_STRATEGY`: "single-server" or "multi-server" (default: "single-server")
+- `SPEEDTEST_TIMEOUT`: Timeout in seconds (default: 30)
+- `SPEEDTEST_CONCURRENT_STREAMS`: Number of concurrent streams (default: 0 = library default)
+- `SPEEDTEST_TEST_DURATION`: Test duration in seconds (default: 0 = library default)
+- `SPEEDTEST_SKIP_DOWNLOAD`: Skip download test (default: false)
+- `SPEEDTEST_SKIP_UPLOAD`: Skip upload test (default: false)
+
+#### Application
+- `LOG_LEVEL`: Logging level (default: "info")
+
+### Helm Values Structure
+
+```yaml
+speedtest:
+  serverId: ""                        # Comma-separated server IDs
+  measurementCount: 1                 # Number of measurements
+  measurementStrategy: "single-server" # Strategy for measurements
+  timeout: 30
+  concurrentStreams: 0
+  testDuration: 0
+  skipDownload: false
+  skipUpload: false
+
+otel:
+  endpoint: "http://otel-collector:4318"
+  serviceName: "speedster"
+  serviceNamespace: ""
+  headers: {}                         # Auth headers (stored in secret)
+  existingSecret:
+    name: ""
+    key: "OTEL_EXPORTER_OTLP_HEADERS"
+
+cronjob:
+  schedule: "0 * * * *"              # Every hour
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  restartPolicy: OnFailure
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+```
+
+## Measurement Strategies
+
+### Single-Server Mode
+- **Behavior**: All N measurements run on the same server
+- **Server Selection**:
+  - With server ID: Uses that specific server
+  - Without server ID: Selects server with lowest latency
+- **Use Case**: Measure variance/consistency from one server
+- **Validation**: Allows 0 or 1 server ID
+
+### Multi-Server Mode
+- **Behavior**: Each measurement runs on a different server
+- **Server Selection**:
+  - With N server IDs: Uses those specific servers (must match measurement count)
+  - Without server IDs: Sorts all servers by latency, selects N best
+- **Use Case**: Compare performance across different servers
+- **Validation**: Allows 0 or exactly N server IDs (where N = measurement count)
+
+## Important Implementation Details
+
+### Server Selection Logic
+1. Fetch all available servers from speedtest-go library
+2. If specific server IDs provided:
+   - Parse and validate IDs
+   - Use `FindServer()` to get those specific servers
+3. If no specific IDs:
+   - Use serverList directly (already contains all servers)
+   - In multi-server mode: sort by latency (lowest first)
+   - Select N servers with best latency
+4. Return selected servers for testing
+
+### Measurement Execution Flow
+1. Select servers based on strategy
+2. For each measurement (1 to N):
+   - Create measurement span with index
+   - Select server (same or different based on strategy)
+   - Run download test (if not skipped)
+   - Run upload test (if not skipped)
+   - Record latency and jitter
+   - Record individual result as metric with measurement_index
+3. Calculate and log statistics if multiple measurements
+4. Return all results
+
+## Dependencies
+
+### Go Modules
+- `github.com/showwin/speedtest-go/speedtest`: Speed test library
+- `go.opentelemetry.io/otel`: OpenTelemetry SDK
+- `go.opentelemetry.io/otel/exporters/otlp/*`: OTLP exporters
+
+### External Services
+- OTLP collector endpoint (required for metrics/traces export)
+- Internet speedtest servers (from speedtest.net)
+
+## Deployment
+
+### Building
+```bash
+go build -o speedster ./cmd/speedster
+```
+
+### Docker
+```bash
+docker build -t speedster:latest .
+```
+
+### Helm Installation
+```bash
+helm install speedster ./helm/speedster \
+  --set otel.endpoint="http://otel-collector:4318" \
+  --set speedtest.measurementCount=5 \
+  --set speedtest.measurementStrategy="multi-server"
+```
+
+## Development Notes
+
+- Always update both application code AND Helm charts when adding new configuration
+- Maintain backward compatibility with default values
+- Validate configuration early in LoadConfig()
+- Use meaningful metric attributes for filtering/aggregation
+- Sort servers by latency for consistent selection in multi-server mode

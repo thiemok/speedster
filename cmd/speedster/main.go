@@ -45,22 +45,60 @@ func main() {
 
 	// Run speed test with tracing
 	runner := speedtest.NewRunner(config)
-	result, err := runner.Run(ctx)
+	results, err := runner.Run(ctx)
 	if err != nil {
 		log.Fatalf("Speed test failed: %v", err)
 	}
 
-	// Log results
-	log.Printf("Speed test completed successfully:")
-	log.Printf("  Server: %s (%s)", result.Server.Name, result.Server.Country)
-	log.Printf("  Download: %.2f Mbps", result.DownloadMbps)
-	log.Printf("  Upload: %.2f Mbps", result.UploadMbps)
-	log.Printf("  Latency: %d ms", result.Latency.Milliseconds())
-	log.Printf("  Jitter: %.d ms", result.Jitter.Milliseconds())
+	// Log individual results
+	log.Printf("Speed test completed successfully with %d measurement(s):", len(results))
+	for _, result := range results {
+		log.Printf("Measurement %d:", result.MeasurementIndex)
+		log.Printf("  Server: %s (%s) - ID: %d", result.Server.Name, result.Server.Country, result.Server.ID)
+		log.Printf("  Download: %.2f Mbps", result.DownloadMbps)
+		log.Printf("  Upload: %.2f Mbps", result.UploadMbps)
+		log.Printf("  Latency: %d ms", result.Latency.Milliseconds())
+		log.Printf("  Jitter: %d ms", result.Jitter.Milliseconds())
+		log.Printf("  Duration: %v", result.Duration)
+	}
 
-	// Record metrics
-	if err := metrics.RecordSpeedTestMetrics(ctx, result); err != nil {
-		log.Printf("Warning: Failed to record metrics: %v", err)
+	// Calculate and log statistics if multiple measurements
+	if len(results) > 1 {
+		var totalDownload, totalUpload float64
+		minDownload, maxDownload := results[0].DownloadMbps, results[0].DownloadMbps
+		minUpload, maxUpload := results[0].UploadMbps, results[0].UploadMbps
+
+		for _, result := range results {
+			totalDownload += result.DownloadMbps
+			totalUpload += result.UploadMbps
+
+			if result.DownloadMbps < minDownload {
+				minDownload = result.DownloadMbps
+			}
+			if result.DownloadMbps > maxDownload {
+				maxDownload = result.DownloadMbps
+			}
+			if result.UploadMbps < minUpload {
+				minUpload = result.UploadMbps
+			}
+			if result.UploadMbps > maxUpload {
+				maxUpload = result.UploadMbps
+			}
+		}
+
+		avgDownload := totalDownload / float64(len(results))
+		avgUpload := totalUpload / float64(len(results))
+
+		log.Printf("Statistics across %d measurements:", len(results))
+		log.Printf("  Download - Avg: %.2f Mbps, Min: %.2f Mbps, Max: %.2f Mbps", avgDownload, minDownload, maxDownload)
+		log.Printf("  Upload   - Avg: %.2f Mbps, Min: %.2f Mbps, Max: %.2f Mbps", avgUpload, minUpload, maxUpload)
+	}
+
+	// Record metrics for each result
+	for _, result := range results {
+		if err := metrics.RecordSpeedTestMetrics(ctx, result); err != nil {
+			log.Printf("Warning: Failed to record metrics for measurement %d: %v", result.MeasurementIndex, err)
+		}
 	}
 
 	log.Println("Speed test completed, exiting...")

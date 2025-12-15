@@ -54,8 +54,18 @@ otel:
 
 # Speedtest configuration
 speedtest:
-  # Specific server ID to test against (optional)
+  # Specific server ID(s) to test against (optional)
+  # For single server: "12345"
+  # For multiple servers: "12345,67890,11111"
   serverId: ""
+  
+  # Number of measurements to run
+  measurementCount: 1
+  
+  # Measurement strategy: "single-server" or "multi-server"
+  # single-server: Run all measurements on the same server
+  # multi-server: Run each measurement on a different server
+  measurementStrategy: "single-server"
   
   # Timeout in seconds
   timeout: 30

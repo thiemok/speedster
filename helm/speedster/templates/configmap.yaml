@@ -16,6 +16,8 @@ data:
   {{- if .Values.speedtest.serverId }}
   SPEEDTEST_SERVER_ID: {{ .Values.speedtest.serverId | quote }}
   {{- end }}
+  SPEEDTEST_MEASUREMENT_COUNT: {{ .Values.speedtest.measurementCount | quote }}
+  SPEEDTEST_MEASUREMENT_STRATEGY: {{ .Values.speedtest.measurementStrategy | quote }}
   SPEEDTEST_TIMEOUT: {{ .Values.speedtest.timeout | quote }}
   SPEEDTEST_CONCURRENT_STREAMS: {{ .Values.speedtest.concurrentStreams | quote }}
   SPEEDTEST_TEST_DURATION: {{ .Values.speedtest.testDuration | quote }}

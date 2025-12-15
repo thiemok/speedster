@@ -164,6 +164,7 @@ func RecordSpeedTestMetrics(ctx context.Context, result *speedtest.Result) error
 		attribute.String("server_id", result.Server.ID),
 		attribute.String("server_name", result.Server.Name),
 		attribute.String("server_country", result.Server.Country),
+		attribute.Int("measurement_index", result.MeasurementIndex),
 	}
 
 	opts := metric.WithAttributes(attrs...)
